@@ -36,6 +36,7 @@ final class PlayerViewController: BaseViewController {
     #if targetEnvironment(macCatalyst)
     private let volumeIndicatorView = VolumeIndicatorView()
     private var volumeIndicatorHideSubscriber: AnyCancellable?
+    private var cursorHidingController: Any?
     #endif
 
     private var orientation: UIInterfaceOrientationMask = .all
@@ -84,6 +85,10 @@ final class PlayerViewController: BaseViewController {
         panRecognizer.delegate = self
         view.addGestureRecognizer(tapRecognizer)
         view.addGestureRecognizer(panRecognizer)
+
+        #if targetEnvironment(macCatalyst)
+        self.setupCursorHiding()
+        #endif
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -117,7 +122,7 @@ final class PlayerViewController: BaseViewController {
             forward.wantsPriorityOverSystemBehavior = true
         }
 
-        var commands = [playPause, back, forward]
+        var commands = (super.keyCommands ?? []) + [playPause, back, forward]
 
         #if targetEnvironment(macCatalyst)
         let volumeUp = UIKeyCommand(
@@ -239,6 +244,18 @@ final class PlayerViewController: BaseViewController {
             }
         }.store(in: &subscribers)
 
+        #if targetEnvironment(macCatalyst)
+        playerView.getPlayChanges()
+            .sink { [weak self] isPlaying in
+                if isPlaying {
+                    self?.resetCursorIdleTimer()
+                } else {
+                    self?.stopCursorIdleTimer()
+                }
+            }
+            .store(in: &subscribers)
+        #endif
+
         self.playerView.getStatusSequence()
             .sink(onNext: { [weak self] value in
                 switch value {
@@ -275,6 +292,28 @@ final class PlayerViewController: BaseViewController {
     private func stopAutoHiddingUI() {
         hideUISubscriber?.cancel()
     }
+
+    #if targetEnvironment(macCatalyst)
+    private func setupCursorHiding() {
+        if #available(macCatalyst 13.4, *) {
+            cursorHidingController = CursorHidingController(view: view) { [weak self] isVisible in
+                self?.playerContainer.uiIsVisible = isVisible
+            }
+        }
+    }
+
+    private func resetCursorIdleTimer() {
+        if #available(macCatalyst 13.4, *) {
+            (cursorHidingController as? CursorHidingController)?.resetIdleTimer()
+        }
+    }
+
+    private func stopCursorIdleTimer() {
+        if #available(macCatalyst 13.4, *) {
+            (cursorHidingController as? CursorHidingController)?.stopIdleTimer()
+        }
+    }
+    #endif
 
     func setupPictureInPicture() {
         if let layer = playerView.playerLayer,
