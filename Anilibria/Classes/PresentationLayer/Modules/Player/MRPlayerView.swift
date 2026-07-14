@@ -420,6 +420,14 @@ final class PlayerViewController: BaseViewController {
         change(enabled: !playItem.isFirst, view: previousContainer)
         change(enabled: !playItem.isLast, view: nextContainer)
 
+        // `setVideo` recreates the underlying AVPlayer (used both when switching
+        // episodes and when switching video quality for the same episode), which
+        // always resets `isPlaying` to `false`. Capture whether playback was
+        // active *before* the reload so we can correctly resume it afterwards,
+        // even when the episode itself hasn't changed (e.g. quality switch).
+        let wasPlaying = playerView.isPlaying
+        let isSameEpisode = previous?.index == playItem.index
+
         if let url = playItem.url {
             self.bag = self.playerView.setVideo(url: url)
                 .filter { $0 != nil }
@@ -428,9 +436,10 @@ final class PlayerViewController: BaseViewController {
                     guard let self else { return }
                     videoSliderView.set(duration: duration)
                     playerView.set(time: playItem.startTime)
-                    if previous?.index != playItem.index
-                        && !playerView.isPlaying
-                        && needsPlay {
+
+                    let shouldResume = isSameEpisode ? wasPlaying : needsPlay
+
+                    if shouldResume && !playerView.isPlaying {
                         playerView.togglePlay()
                         playerContainer.uiIsVisible = false
                     }
